@@ -107,7 +107,7 @@ spec:
                 - --leader-elect
                 command:
                 - /manager
-                image: controller:latest
+                image: quay.io/mgoerens/test-operator:0.0.1
                 livenessProbe:
                   httpGet:
                     path: /healthz
@@ -172,11 +172,11 @@ spec:
   installModes:
   - supported: false
     type: OwnNamespace
-  - supported: false
-    type: SingleNamespace
-  - supported: false
-    type: MultiNamespace
   - supported: true
+    type: SingleNamespace
+  - supported: true
+    type: MultiNamespace
+  - supported: false
     type: AllNamespaces
   keywords:
   - test
