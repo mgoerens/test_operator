@@ -1,0 +1,11 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: CatalogSource
+metadata:
+  name: test-catalog
+  namespace: openshift-marketplace
+spec:
+  sourceType: grpc
+  image: quay.io/mgoerens/test-operator-catalog:v0.0.1
+  displayName: Test Catalog
+  publisher: Red Hat Partner
+
