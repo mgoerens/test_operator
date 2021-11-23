@@ -1,0 +1,6 @@
+apiVersion: example.example.com/v1alpha1
+kind: ExampleResource
+metadata:
+  name: exampleresource-sample
+spec:
+  # Add fields here
