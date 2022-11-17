@@ -19,6 +19,13 @@ package controllers
 import (
 	"context"
 
+	"github.com/imdario/mergo"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -47,9 +54,81 @@ type ExampleResourceReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.10.0/pkg/reconcile
 func (r *ExampleResourceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	log := log.FromContext(ctx)
 
-	// your logic here
+	var er examplev1alpha1.ExampleResource
+
+	// Load the er by name
+	if err := r.Get(ctx, req.NamespacedName, &er); err != nil {
+		if k8serrors.IsNotFound(err) {
+			// we'll ignore not-found errors, since they can't be fixed by an immediate
+			// requeue (we'll need to wait for a new notification), and we can get them
+			// on deleted requests.
+			log.Error(
+				err,
+				"Cannot find er - has it been deleted ?",
+				"er Name", er.Name,
+				"er Namespace", er.Namespace,
+			)
+			return ctrl.Result{}, nil
+		}
+		log.Error(
+			err,
+			"Error fetching er",
+			"er Name", er.Name,
+			"er Namespace", er.Namespace,
+		)
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	replicas := int32(1)
+	ls := map[string]string{"app": "er", "er_cr": er.Name}
+
+	desired := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      er.Name,
+			Namespace: er.Namespace,
+			// Labels:    labels,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{
+				MatchLabels: ls,
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: ls,
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{
+						Name:    "busybox",
+						Image:   "busybox",
+						Command: []string{"sleep", "3600"},
+					}},
+				},
+			},
+		},
+	}
+
+	// Set er instance as the owner and controller
+	if err := ctrl.SetControllerReference(&er, desired, r.Scheme); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	current := &appsv1.Deployment{}
+	if err := r.Get(ctx, types.NamespacedName{Name: er.Name, Namespace: er.Namespace}, current); err != nil {
+		// Not exist - Create
+		r.Create(ctx, desired)
+	} else {
+		patchDiff := client.MergeFrom(current)
+		if err = mergo.Merge(current, desired, mergo.WithOverride); err != nil {
+			return ctrl.Result{}, err
+		}
+		if err = r.Patch(ctx, desired, patchDiff); err != nil {
+			return ctrl.Result{}, err
+		}
+
+	}
 
 	return ctrl.Result{}, nil
 }
@@ -58,5 +137,6 @@ func (r *ExampleResourceReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 func (r *ExampleResourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&examplev1alpha1.ExampleResource{}).
+		Owns(&appsv1.Deployment{}).
 		Complete(r)
 }
